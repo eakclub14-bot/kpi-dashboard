@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI & Compliance Dashboard</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS สำหรับ Export Excel (แยก Sheet รายคน) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --bg-main: #f8fafc;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --brand-primary: #2563eb;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+        }
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            padding: 1.5rem;
+        }
+
+        /* ---------------- Cards & Layout ---------------- */
+        .dashboard-header {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-kpi {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.25rem 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-kpi:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+        }
+        .card-kpi::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+        }
+        .kpi-total::before { background-color: var(--brand-primary); }
+        .kpi-ontime::before { background-color: var(--accent-green); }
+        .kpi-late::before { background-color: var(--accent-red); }
+        .kpi-points::before { background-color: var(--accent-amber); }
+
+        .kpi-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        .kpi-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            line-height: 1;
+        }
+
+        .card-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.25rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* ---------------- Tables Design ---------------- */
+        .table-custom {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            table-layout: fixed;
+        }
+        .table-custom thead th {
+            background-color: #1e293b;
+            color: #f8fafc;
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 8px 10px;
+            border: none;
+        }
+        .table-custom thead th:first-child { border-top-left-radius: 10px; }
+        .table-custom thead th:last-child { border-top-right-radius: 10px; }
+        
+        .table-custom tbody tr {
+            transition: background-color 0.15s ease;
+        }
+        .table-custom tbody tr:hover {
+            background-color: #f1f5f9;
+        }
+        .table-custom tbody td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+            font-size: 0.85rem;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        /* ---------------- Professional Rank Badges ---------------- */
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 0.8rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            flex-shrink: 0;
+        }
+        .rank-1 { background-color: #fef3c7; color: #b45309; border: 1px solid #fde047; }
+        .rank-2 { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .rank-3 { background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
+        .rank-other { background-color: transparent; color: #64748b; }
+
+        /* ---------------- Interactive Email Badges ---------------- */
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+            font-weight: 500;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: normal;
+            word-break: break-all;
+            max-width: 100%;
+        }
+        .user-badge:hover {
+            background-color: #eff6ff;
+            color: #2563eb;
+            border-color: #bfdbfe;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.1);
+        }
+        .user-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #2563eb;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .row-selected {
+            background-color: #e0f2fe !important;
+        }
+
+        .badge-status {
+            font-size: 0.78rem;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <!-- Header Zone -->
+    <div class="dashboard-header mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="p-2 bg-primary bg-opacity-10 rounded-3">
+                <i class="fa-solid fa-chart-pie text-primary fs-3"></i>
+            </div>
+            <div>
+                <h4 class="m-0 font-weight-bold text-dark">KPI & Compliance Dashboard</h4>
+                <small class="text-muted">ระบบติดตามรายงานและคะแนนการส่งงานของทีมงาน (2026)</small>
+            </div>
+            <span id="activeFilterBadge" class="badge bg-primary fs-6 d-none ms-2"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-secondary d-none" id="resetFilterBtn" onclick="resetAssigneeFilter()">
+                <i class="fa-solid fa-users me-1"></i> แสดงทุกคน
+            </button>
+            
+            <button class="btn btn-success fw-medium" id="exportBtn" onclick="exportExcelSeparateSheets()">
+                <i class="fa-solid fa-file-excel me-1"></i> Export Excel (แยกรายบุคคล)
+            </button>
+            
+            <button class="btn btn-primary fw-medium" id="fetchBtn" onclick="loadDashboardData()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> <span id="btnText">Sync Outlook</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- KPIs Metric Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card-kpi kpi-total">
+                <div class="kpi-title d-flex justify-content-between">
+                    <span>ส่งทั้งหมด (Total Sent)</span>
+                    <i class="fa-solid fa-paper-plane text-muted"></i>
+                </div>
+                <div class="kpi-value text-dark" id="total_sent">0</div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card-kpi kpi-ontime">
+                <div class="kpi-title d-flex justify-content-between">
+                    <span>ตรงเวลา / ก่อนกำหนด</span>
+                    <i class="fa-solid fa-circle-check text-success"></i>
+                </div>
+                <div class="kpi-value text-success" id="ontime_count">0 <span class="fs-6 fw-normal text-muted" id="ontime_rate">(0%)</span></div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card-kpi kpi-late">
+                <div class="kpi-title d-flex justify-content-between">
+                    <span>ส่งล่าช้า (Late)</span>
+                    <i class="fa-solid fa-triangle-exclamation text-danger"></i>
+                </div>
+                <div class="kpi-value text-danger" id="late_count">0 <span class="fs-6 fw-normal text-danger" id="late_rate">(0%)</span></div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card-kpi kpi-points">
+                <div class="kpi-title d-flex justify-content-between">
+                    <span>คะแนนรวมสะสม</span>
+                    <i class="fa-solid fa-star text-warning"></i>
+                </div>
+                <div class="kpi-value text-warning" id="total_points">0 <span class="fs-6 fw-normal text-muted">Pts</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area: Leaderboard (4) & Reports Table (8) -->
+    <div class="row g-4">
+        <!-- Rank Leaderboard Column -->
+        <div class="col-12 col-xl-4">
+            <div class="card-section">
+                <div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="m-0 font-weight-bold d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-trophy text-warning"></i> Rank Leaderboard
+                        </h6>
+                        <small class="text-muted" style="font-size: 0.75rem;">(คลิกกรองรายคน)</small>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table-custom text-center">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">Rank</th>
+                                    <th class="text-start" style="width: 53%;">Assignee (Email)</th>
+                                    <th style="width: 16%;">Points</th>
+                                    <th style="width: 16%;">Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboard_tbody">
+                                <tr><td colspan="4" class="text-muted py-3" id="lb_status">กำลังโหลดข้อมูล...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sent Reports Table Column -->
+        <div class="col-12 col-xl-8">
+            <div class="card-section">
+                <div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="m-0 font-weight-bold d-flex align-items-center gap-2" id="reportsTableTitle">
+                            <i class="fa-solid fa-inbox text-primary"></i> รายการอีเมลรายงานที่ส่งจริง (Sent Reports)
+                        </h6>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table-custom">
+                            <thead>
+                                <tr class="text-center">
+                                    <th class="text-start" style="width: 35%;">Report Name</th>
+                                    <th style="width: 25%;">Assignee</th>
+                                    <th style="width: 14%;">Due Date</th>
+                                    <th style="width: 14%;">Submitted Date</th>
+                                    <th style="width: 12%;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reports_tbody">
+                                <tr><td colspan="5" class="text-center text-muted py-3" id="rp_status">
+                                    <div>กำลังโหลดข้อมูล... <span id="progressPercent">0%</span></div>
+                                    <div class="progress mt-2" style="height: 6px;">
+                                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width: 0%"></div>
+                                    </div>
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Pagination Footer -->
+                <div class="pagination-container border-top mt-3">
+                    <small class="text-muted" id="pageInfo">แสดงรายการที่ 0-0 จากทั้งหมด 0 รายการ</small>
+                    <nav>
+                        <ul class="pagination pagination-sm m-0" id="paginationControls">
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let globalDashboardData = null;
+    let selectedAssignee = null;
+    let currentPage = 1;
+    const rowsPerPage = 5;
+    let progressInterval = null;
+
+    async function loadDashboardData() {
+        const fetchBtn = document.getElementById('fetchBtn');
+        const btnText = document.getElementById('btnText');
+        fetchBtn.disabled = true;
+
+        startProgressTracking();
+
+        try {
+            const response = await fetch('/api/dashboard');
+            globalDashboardData = await response.json();
+            stopProgressTracking();
+            renderDashboard();
+        } catch (error) {
+            console.error("Error loading dashboard data:", error);
+            stopProgressTracking();
+            alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+        } finally {
+            fetchBtn.disabled = false;
+            btnText.innerText = 'Sync Outlook';
+        }
+    }
+
+    function startProgressTracking() {
+        progressInterval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/progress');
+                const data = await res.json();
+                const p = data.progress || 0;
+
+                document.getElementById('btnText').innerText = `กำลังโหลด... ${p}%`;
+
+                const percentElem = document.getElementById('progressPercent');
+                const barElem = document.getElementById('progressBar');
+                if (percentElem) percentElem.innerText = `${p}%`;
+                if (barElem) barElem.style.width = `${p}%`;
+            } catch (e) {
+                console.error("Error fetching progress", e);
+            }
+        }, 300);
+    }
+
+    function stopProgressTracking() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+    }
+
+    function filterByAssignee(assigneeEmail) {
+        if (selectedAssignee === assigneeEmail) {
+            resetAssigneeFilter();
+            return;
+        }
+        selectedAssignee = assigneeEmail;
+        currentPage = 1;
+        renderDashboard();
+    }
+
+    function resetAssigneeFilter() {
+        selectedAssignee = null;
+        currentPage = 1;
+        renderDashboard();
+    }
+
+    function goToPage(page) {
+        currentPage = page;
+        renderDashboard();
+    }
+
+    function renderDashboard() {
+        if (!globalDashboardData) return;
+
+        const allReports = globalDashboardData.reports || [];
+        let leaderboard = globalDashboardData.leaderboard || [];
+
+        let filteredReports = allReports;
+        if (selectedAssignee) {
+            filteredReports = allReports.filter(r => (r.assignee || r.user || '').toLowerCase() === selectedAssignee.toLowerCase());
+        }
+
+        const total_sent = filteredReports.length;
+        const ontime_count = filteredReports.filter(r => r.status_type === 'early' || r.status_type === 'ontime' || r.status === 'ตรงเวลา').length;
+        const late_count = total_sent - ontime_count;
+        const total_points = filteredReports.reduce((sum, r) => sum + (r.points || (r.status === 'ตรงเวลา' ? 10 : 5)), 0);
+
+        const ontime_rate = total_sent > 0 ? ((ontime_count / total_sent) * 100).toFixed(1) : 0;
+        const late_rate = total_sent > 0 ? ((late_count / total_sent) * 100).toFixed(1) : 0;
+
+        document.getElementById('total_sent').innerText = total_sent;
+        document.getElementById('ontime_count').innerHTML = `${ontime_count} <span class="fs-6 fw-normal text-muted">(${ontime_rate}%)</span>`;
+        document.getElementById('late_count').innerHTML = `${late_count} <span class="fs-6 fw-normal text-danger">(${late_rate}%)</span>`;
+        document.getElementById('total_points').innerHTML = `${total_points} <span class="fs-6 fw-normal text-muted">Pts</span>`;
+
+        const badge = document.getElementById('activeFilterBadge');
+        const resetBtn = document.getElementById('resetFilterBtn');
+        const title = document.getElementById('reportsTableTitle');
+
+        if (selectedAssignee) {
+            badge.innerText = `Filtering: ${selectedAssignee}`;
+            badge.classList.remove('d-none');
+            resetBtn.classList.remove('d-none');
+            title.innerHTML = `<i class="fa-solid fa-user-check text-primary"></i> ประวัติการส่งรายงาน: ${selectedAssignee}`;
+        } else {
+            badge.classList.add('d-none');
+            resetBtn.classList.add('d-none');
+            title.innerHTML = '<i class="fa-solid fa-inbox text-primary"></i> รายการอีเมลรายงานที่ส่งจริง (Sent Reports)';
+        }
+
+        // Render Leaderboard
+        const leaderboardTbody = document.getElementById('leaderboard_tbody');
+        if (leaderboard.length === 0) {
+            leaderboardTbody.innerHTML = '<tr><td colspan="4" class="text-muted py-3">ไม่พบข้อมูลคะแนน</td></tr>';
+        } else {
+            leaderboardTbody.innerHTML = leaderboard.map(item => {
+                const itemEmail = item.assignee || item.user || '';
+                const firstChar = itemEmail.charAt(0).toUpperCase();
+                const isSelected = selectedAssignee && itemEmail.toLowerCase() === selectedAssignee.toLowerCase();
+                const rowClass = isSelected ? 'row-selected' : '';
+
+                let rankBadgeHtml = `<span class="rank-badge rank-other">${item.rank}</span>`;
+                if (item.rank === 1) rankBadgeHtml = `<span class="rank-badge rank-1">1</span>`;
+                else if (item.rank === 2) rankBadgeHtml = `<span class="rank-badge rank-2">2</span>`;
+                else if (item.rank === 3) rankBadgeHtml = `<span class="rank-badge rank-3">3</span>`;
+
+                return `
+                    <tr class="${rowClass}">
+                        <td>${rankBadgeHtml}</td>
+                        <td class="text-start">
+                            <div class="user-badge" onclick="filterByAssignee('${itemEmail}')" title="คลิกเพื่อดูเฉพาะรายงานของ ${itemEmail}">
+                                <div class="user-avatar">${firstChar}</div>
+                                <span>${itemEmail}</span>
+                            </div>
+                        </td>
+                        <td class="fw-bold text-warning">${item.points || 0}</td>
+                        <td class="text-success fw-semibold">${item.ontime_rate || item.rate || '0%'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render Reports with Pagination
+        const totalPages = Math.ceil(filteredReports.length / rowsPerPage) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const startIndex = (currentPage - 1) * rowsPerPage;
+        const endIndex = startIndex + rowsPerPage;
+        const pageReports = filteredReports.slice(startIndex, endIndex);
+
+        const reportsTbody = document.getElementById('reports_tbody');
+        if (filteredReports.length === 0) {
+            reportsTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">ไม่พบข้อมูลรายการอีเมลที่เลือก</td></tr>';
+            document.getElementById('pageInfo').innerText = 'แสดงรายการที่ 0-0 จากทั้งหมด 0 รายการ';
+            document.getElementById('paginationControls').innerHTML = '';
+        } else {
+            reportsTbody.innerHTML = pageReports.map(item => {
+                let badgeClass = 'bg-secondary';
+                let iconClass = 'fa-clock';
+                
+                const isOntime = item.status_type === 'early' || item.status_type === 'ontime' || item.status === 'ตรงเวลา';
+                if (isOntime) {
+                    badgeClass = 'bg-success';
+                    iconClass = 'fa-circle-check';
+                } else {
+                    badgeClass = 'bg-danger';
+                    iconClass = 'fa-triangle-exclamation';
+                }
+
+                const assigneeEmail = item.assignee || item.user || '-';
+                const firstChar = assigneeEmail.charAt(0).toUpperCase();
+
+                // แสดง Due Date วัน/เดือน/ปี ค.ศ. 2026 จาก Python โดยตรง
+                const dueDateVal = item.due_date_display || item.due_date || '-';
+
+                return `
+                    <tr>
+                        <td>
+                            <div class="fw-semibold text-dark mb-1" style="font-size: 0.85rem; line-height: 1.3;">
+                                ${item.report_name || item.subject || '-'}
+                            </div>
+                            <div class="d-flex align-items-center gap-1 text-muted" style="font-size: 0.75rem;">
+                                <span class="badge bg-light text-dark border px-1 py-0 fw-normal">${item.category || ''}</span> 
+                                <span class="ms-1"><i class="fa-solid fa-paperclip me-1"></i>${item.attachment_status || ''}</span>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <span class="user-badge" onclick="filterByAssignee('${assigneeEmail}')">
+                                <div class="user-avatar">${firstChar}</div>
+                                <span>${assigneeEmail}</span>
+                            </span>
+                        </td>
+                        <td class="text-center"><small class="text-secondary">${dueDateVal}</small></td>
+                        <td class="text-center"><small class="text-secondary">${item.submitted_date || item.sent_date || '-'}</small></td>
+                        <td class="text-center">
+                            <span class="badge badge-status ${badgeClass}">
+                                <i class="fa-solid ${iconClass}"></i> ${item.status || (isOntime ? 'ตรงเวลา' : 'ส่งล่าช้า')}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const displayedStart = startIndex + 1;
+            const displayedEnd = Math.min(endIndex, filteredReports.length);
+            document.getElementById('pageInfo').innerText = `แสดงรายการที่ ${displayedStart}-${displayedEnd} จากทั้งหมด ${filteredReports.length} รายการ`;
+
+            let paginationHtml = `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToPage(${currentPage - 1})">Previous</button>
+                </li>
+            `;
+
+            for (let i = 1; i <= totalPages; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <button class="page-link" onclick="goToPage(${i})">${i}</button>
+                    </li>
+                `;
+            }
+
+            paginationHtml += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToPage(${currentPage + 1})">Next</button>
+                </li>
+            `;
+
+            document.getElementById('paginationControls').innerHTML = paginationHtml;
+        }
+    }
+
+    // ฟังก์ชัน Export Excel แยก Sheet รายคน
+    function exportExcelSeparateSheets() {
+        if (!globalDashboardData || !globalDashboardData.reports || globalDashboardData.reports.length === 0) {
+            alert("ไม่มีข้อมูลที่จะ Export กรุณากด Sync Outlook ก่อนครับ");
+            return;
+        }
+
+        const reportsData = globalDashboardData.reports;
+        const wb = XLSX.utils.book_new();
+
+        // 1. สร้าง Sheet แรก "รายงานทั้งหมด"
+        const allDataFormatted = reportsData.map(item => ({
+            "ชื่อรายงาน / หัวข้ออีเมล": item.report_name || item.subject,
+            "ผู้รับผิดชอบ": item.assignee,
+            "งวดเดือน": item.period,
+            "หมวดหมู่": item.category,
+            "วันที่ส่ง": item.submitted_date || item.sent_date,
+            "วันกำหนดส่ง": item.due_date_display || item.due_date,
+            "สถานะ": item.status,
+            "คะแนน": item.points,
+            "ไฟล์แนบ": item.attachment_status
+        }));
+        const wsAll = XLSX.utils.json_to_sheet(allDataFormatted);
+        XLSX.utils.book_append_sheet(wb, wsAll, "รายงานทั้งหมด");
+
+        // 2. จัดกลุ่มข้อมูลแยกตาม Assignee
+        const groupedByAssignee = {};
+        reportsData.forEach(item => {
+            const user = item.assignee || "Unassigned";
+            if (!groupedByAssignee[user]) groupedByAssignee[user] = [];
+            
+            groupedByAssignee[user].push({
+                "ชื่อรายงาน / หัวข้ออีเมล": item.report_name || item.subject,
+                "ผู้รับผิดชอบ": item.assignee,
+                "งวดเดือน": item.period,
+                "หมวดหมู่": item.category,
+                "วันที่ส่ง": item.submitted_date || item.sent_date,
+                "วันกำหนดส่ง": item.due_date_display || item.due_date,
+                "สถานะ": item.status,
+                "คะแนน": item.points,
+                "ไฟล์แนบ": item.attachment_status
+            });
+        });
+
+        // 3. เพิ่ม Sheet ย่อยแยกรายบุคคล
+        Object.keys(groupedByAssignee).forEach(userEmail => {
+            const userSheetData = groupedByAssignee[userEmail];
+            const wsUser = XLSX.utils.json_to_sheet(userSheetData);
+            
+            let sheetName = userEmail.split('@')[0].substring(0, 31);
+            XLSX.utils.book_append_sheet(wb, wsUser, sheetName);
+        });
+
+        // 4. ดาวน์โหลดไฟล์ Excel
+        const dateStr = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Report_Summary_By_User_${dateStr}.xlsx`);
+    }
+
+    window.onload = loadDashboardData;
+</script>
+
+</body>
+</html>
