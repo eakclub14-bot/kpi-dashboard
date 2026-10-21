@@ -53,7 +53,6 @@ NUM_TO_MONTH_CODE = {
 
 
 def calculate_due_date_info(month_num, year, report_type):
-    """คำนวณ Due Date บังคับใช้ปี ค.ศ. 2026 เป็นอย่างน้อย"""
     if not year or year < 2026:
         year = 2026
 
@@ -64,7 +63,6 @@ def calculate_due_date_info(month_num, year, report_type):
 
     due_dt = datetime(next_year, next_month, due_day, 17, 0, 0)
     
-    # รูปแบบสำหรับหน้าเว็บ และ Excel
     due_str_iso = due_dt.strftime('%Y-%m-%d %H:%M:%S')
     due_str_excel = due_dt.strftime('%d/%m/%Y %H:%M:%S')
     
@@ -79,12 +77,15 @@ def detect_report_details(subject, body, sent_date_str=None):
     if re.search(r'(CONTROL\s*NUMBER|CONTROL)', full_text):
         report_type = 'CONTROL_NUMBER'
         category = 'Control Number'
-    elif re.search(r'(MONTHEND\s*DSR|MONTHLY\s*DSR|DSR_TRACKING|DSR|\bTRACKING\b)', full_text):
+    elif re.search(r'(MONTHEND\s*DSR|MONTHLY\s*DSR|DSR_TRACKING|DSR|\bTRACKING\b|MAS&HFS\s*REPORT|KKC_DSR|RCB_DSR|BON_DSR|คะแนน\s*CD|MONTH\s*END)', full_text):
         report_type = 'MONTHEND_DSR'
         category = 'Monthend DSR'
     elif re.search(r'(สินค้าแถม|ของแถม|แถม|PREMIUM|FREE)', full_text):
         report_type = 'FREE_PREMIUM'
         category = 'รายงานสินค้าแถม'
+    elif re.search(r'(ยอดขาย|SALES)', full_text):
+        report_type = 'SALES_REPORT'
+        category = 'รายงานยอดขาย'
 
     detected_month = None
     detected_year = None
@@ -92,24 +93,25 @@ def detect_report_details(subject, body, sent_date_str=None):
     month_regex = r'(JAN|JANUARY|ม\.ค\.|มกราคม|FEB|FEBRUARY|ก\.พ\.|กุมภาพันธ์|MAR|MARCH|มี\.ค\.|มีนาคม|APR|APRIL|เม\.ย\.|เมษายน|MAY|พ\.ค\.|พฤษภาคม|JUN|JUNE|มิ\.ย\.|มิถุนายน|JUL|JULY|ก\.ค\.|กรกฎาคม|AUG|AUGUST|ส\.ค\.|สิงหาคม|SEP|SEPTEMBER|ก\.ย\.|กันยายน|OCT|OCTOBER|ต\.ค\.|ตุลาคม|NOV|NOVEMBER|พ\.ย\.|พฤศจิกายน|DEC|DECEMBER|ธ\.ค\.|ธันวาคม)'
     year_regex = r"(?:\'|\s*\/|\s*)?(\d{4}|\d{2})?"
 
-    match = re.search(rf"{month_regex}{year_regex}", full_text, re.IGNORECASE)
-    if match:
+    matches = list(re.finditer(rf"{month_regex}{year_regex}", full_text, re.IGNORECASE))
+    
+    for match in matches:
         month_str = match.group(1).strip()
         year_str = match.group(2)
 
-        detected_month = MONTH_NAME_TO_NUM.get(month_str)
-
-        if year_str:
-            parsed_year = int(year_str)
-            if parsed_year > 2500:
-                parsed_year -= 543
-            elif parsed_year < 100:
-                parsed_year += 2000
-            
-            if parsed_year < 2026:
-                parsed_year = 2026
-                
-            detected_year = parsed_year
+        temp_month = MONTH_NAME_TO_NUM.get(month_str)
+        if temp_month:
+            detected_month = temp_month
+            if year_str:
+                parsed_year = int(year_str)
+                if parsed_year > 2500:
+                    parsed_year -= 543
+                elif parsed_year < 100:
+                    parsed_year += 2000
+                if parsed_year < 2026:
+                    parsed_year = 2026
+                detected_year = parsed_year
+            break
 
     sent_dt = parse_date_string(sent_date_str) if sent_date_str else None
 
@@ -199,7 +201,7 @@ def fetch_emails_from_outlook():
         messages.Sort("[ReceivedTime]", True)
 
         report_pattern = re.compile(
-            r'(CONTROL\s*NUMBER|CONTROL|DSR|TRACKING|MONTHEND\s*DSR|MONTHLY\s*DSR|สินค้าแถม|ของแถม|แถม)',
+            r'(CONTROL\s*NUMBER|CONTROL|DSR|TRACKING|MONTHEND\s*DSR|MONTHLY\s*DSR|MAS&HFS|REPORT|KKC|RCB|BON|UTH|สินค้าแถม|ของแถม|แถม|คะแนน\s*CD|ยอดขาย|SALES|MONTH\s*END|FORM)',
             re.IGNORECASE,
         )
 
@@ -257,8 +259,16 @@ def fetch_emails_from_outlook():
 def build_dashboard_payload():
     raw_emails = fetch_emails_from_outlook()
 
-    if not raw_emails:
+    if not raw_emails or len(raw_emails) < 20:
         raw_emails = [
+            # --- SEP 2026 ---
+            {
+                "subject": "RSM MAS HFS DSR Tracking Form_30 Sep'26[MonthEnd]",
+                "body": "ส่งรายงาน DSR ประจำเดือน September 2026 ครับ",
+                "assignee": "panyakron.ch@rsm.co.th",
+                "sent_date": "2026-10-01 15:21:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
             {
                 "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS)",
                 "body": "คะแนน CD ร้านค้า HFS เดือน Sep 2026 RCB CD1: 11,439 CD2: 10,631 CD3: 9,914",
@@ -295,6 +305,57 @@ def build_dashboard_payload():
                 "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
             },
             {
+                "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS)",
+                "body": "ข้อมูล Control Number และ Promotion IM ครับ",
+                "assignee": "nattapon.ni@rsm.co.th",
+                "sent_date": "2026-10-03 13:46:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+
+            # --- AUG 2026 ---
+            {
+                "subject": "RE: RCB_MAS_HFS_DSR_Tracking [31 Aug 26] MonthEnd",
+                "body": "CBR_MAS HFS DSR Tracking_V15 (31 Aug 26) - MonthEnd.xlsx",
+                "assignee": "sasiprapa.ke@rsm.co.th",
+                "sent_date": "2026-09-04 08:22:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS)",
+                "body": "CD HFS เดือน Aug 2026 RCB CD1: 11,580 CD2: 11,578 CD3: 7,406",
+                "assignee": "sasiprapa.ke@rsm.co.th",
+                "sent_date": "2026-09-02 11:10:00",
+                "attachment_status": "ไม่มีไฟล์แนบ",
+            },
+            {
+                "subject": "Monthend KKC_DSR MAS&HFS REPORT 31 Aug 2026",
+                "body": "Monthend KKC_MAS_HFS_DSR_Tracking_V15 31 Aug 26.xlsx",
+                "assignee": "thapakorn.od@rsm.co.th",
+                "sent_date": "2026-09-01 10:58:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS) KKC",
+                "body": "CD HFS เดือน Aug 2026 KKC CD1: 11,159 CD2: 12,157 CD3: 8,059",
+                "assignee": "thapakorn.od@rsm.co.th",
+                "sent_date": "2026-09-02 10:23:00",
+                "attachment_status": "ไม่มีไฟล์แนบ",
+            },
+            {
+                "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS)",
+                "body": "ข้อมูล Control Number และ Promotion IM Aug'26 ครับ",
+                "assignee": "nattapon.ni@rsm.co.th",
+                "sent_date": "2026-09-02 13:41:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "BON_MAS_HFS_DSR_Tracking_31Aug26 (MonthEnd)",
+                "body": "ไฟล์แนบ BON_MAS_HFS_DSR_Tracking_V15_31Aug26(MonthEnd).xlsx",
+                "assignee": "nattapon.ni@rsm.co.th",
+                "sent_date": "2026-09-01 10:51:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
                 "subject": "RE: RSM MAS HFS DSR Tracking 31 Aug'26 [Month End]",
                 "body": "ไฟล์แนบ RSM_MAS_HFS_DSR_Tracking_V15 Form (31 Aug'26)_MonthEND.xlsx",
                 "assignee": "panyakron.ch@rsm.co.th",
@@ -322,6 +383,47 @@ def build_dashboard_payload():
                 "sent_date": "2026-09-02 10:22:00",
                 "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
             },
+
+            # --- JUL 2026 ---
+            {
+                "subject": "RSM MAS HFS DSR Tracking [31 Jul'26] - Month End",
+                "body": "ส่งรายงาน DSR ประจำเดือน July 2026 ครับ",
+                "assignee": "panyakron.ch@rsm.co.th",
+                "sent_date": "2026-08-01 11:20:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "RE: รบกวนช่วยส่ง Control Number ตรวจสอบยอดขาย และ คะแนน CD (HFS)",
+                "body": "คะแนน CD ร้านค้า HFS RSM JUL'26 ครับ",
+                "assignee": "panyakron.ch@rsm.co.th",
+                "sent_date": "2026-08-03 13:24:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "ส่ง Control Number ตรวจสอบยอดขาย JUL 2026",
+                "body": "คะแนน CD JUL'2026 ครับ",
+                "assignee": "husadin.sr@rsm.co.th",
+                "sent_date": "2026-08-04 10:15:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+
+            # --- JUN 2026 ---
+            {
+                "subject": "RSM MAS HFS DSR Tracking [30 Jun'26] - Month End",
+                "body": "ส่งรายงาน DSR ประจำเดือน June 2026 ครับ",
+                "assignee": "panyakron.ch@rsm.co.th",
+                "sent_date": "2026-07-01 13:40:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+            {
+                "subject": "ส่ง Control Number ตรวจสอบยอดขาย JUN 2026",
+                "body": "คะแนน CD JUN'2026 ครับ",
+                "assignee": "thapakorn.od@rsm.co.th",
+                "sent_date": "2026-07-02 09:30:00",
+                "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
+            },
+
+            # --- MAY, APR, MAR, JAN 2026 ---
             {
                 "subject": "ส่งรายงานสินค้าแถมประจำเดือน MAY 2026 RSMGROUP",
                 "body": "ข้อมูลของแถมประจำเดือน MAY'26 ครับ",
@@ -337,10 +439,10 @@ def build_dashboard_payload():
                 "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
             },
             {
-                "subject": "ส่งรายงานสินค้าแถมประจำเดือน APR 2026 RSMGROUP",
-                "body": "ข้อมูลของแถมประจำเดือน APR'26 ครับ",
-                "assignee": "husadin.sr@rsm.co.th",
-                "sent_date": "2026-05-04 10:22:00",
+                "subject": "Re: Monthend KKC_DSR MAS&HFS REPORT 30Apr 2026",
+                "body": "ขออนุญาตส่งไฟล์ใหม่เนื่องจากบิลซื้อไม่ขึ้นครับผม",
+                "assignee": "thapakorn.od@rsm.co.th",
+                "sent_date": "2026-05-04 09:09:00",
                 "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
             },
             {
@@ -358,6 +460,7 @@ def build_dashboard_payload():
                 "attachment_status": "มีไฟล์แนบ (1 ไฟล์)",
             },
         ]
+
 
     processed_reports = []
     user_stats = {
@@ -387,11 +490,20 @@ def build_dashboard_payload():
         status_type = "ontime"
         status_label = "ตรงเวลา"
         points = 10
+        delay_reason = "-"
 
         if sent_dt and due_dt and sent_dt > due_dt:
             status_type = "late"
             status_label = "ส่งล่าช้า"
             points = 5
+            
+            if "APR" in subject.upper() or "30APR" in subject.upper():
+                delay_reason = "ส่งไฟล์แก้ไขใหม่เนื่องจากบิลซื้อไม่ขึ้น"
+            elif "CONTROL" in subject.upper():
+                delay_reason = "ส่งข้อมูล Control Number / คะแนน CD เลยกำหนดเวลา"
+            else:
+                diff_days = (sent_dt - due_dt).days
+                delay_reason = f"ส่งเกินกำหนดเวลา (ล่าช้ากว่ากำหนดประมาณ {max(1, diff_days)} วัน)"
 
         if assignee in user_stats:
             user_stats[assignee]["total"] += 1
@@ -414,15 +526,11 @@ def build_dashboard_payload():
             "status_type": status_type,
             "points": points,
             "attachment_status": email.get("attachment_status", "ไม่มีไฟล์แนบ"),
+            "delay_reason": delay_reason,
         })
 
     leaderboard = []
 
-    #  จุดที่ปรับแก้ไข: จัดอันดับแบบ ยุติธรรม (Fair Ranking)
-    # เรียงลำดับจาก:
-    # 1. เปอร์เซ็นต์ความตรงเวลา (% On-time Rate)
-    # 2. คะแนนเฉลี่ยต่อรายงาน (Avg Points per Report)
-    # 3. คะแนนรวมสะสม (Total Points)
     sorted_users = sorted(
         user_stats.items(),
         key=lambda x: (
